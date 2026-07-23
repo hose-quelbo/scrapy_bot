@@ -8,20 +8,28 @@ export let currentScrapedItemsMap = new Map();
 // -------------------------------------------------------------
 // Gallery Rendering
 // -------------------------------------------------------------
-export function renderRealGallery(items) {
+export function renderRealGallery(items, isAppend = false, hasMore = false, loadMoreCallback = null) {
     const galleryContainer = document.getElementById('gallery-container');
     const mediaGrid = document.getElementById('media-grid');
+    const loadMoreContainer = document.getElementById('load-more-container');
+    const btnLoadMore = document.getElementById('btn-load-more');
     
     galleryContainer.classList.remove('hidden');
-    mediaGrid.innerHTML = '';
-    selectedMediaItems.clear();
-    currentScrapedItemsMap.clear();
-    updateDownloadButtonText();
+    
+    if (!isAppend) {
+        mediaGrid.innerHTML = '';
+        selectedMediaItems.clear();
+        currentScrapedItemsMap.clear();
+        updateDownloadButtonText();
+    }
 
     const history = JSON.parse(localStorage.getItem('ameva_download_history') || '[]');
     const downloadedIds = new Set(history.map(item => item.mediaId).filter(id => id));
 
     items.forEach(item => {
+        // Prevent duplicates in append mode
+        if (currentScrapedItemsMap.has(item.id)) return;
+        
         currentScrapedItemsMap.set(item.id, item);
         const isDownloaded = downloadedIds.has(item.id);
 
@@ -46,6 +54,18 @@ export function renderRealGallery(items) {
         `;
         mediaGrid.appendChild(card);
     });
+
+    if (hasMore && loadMoreContainer && btnLoadMore) {
+        loadMoreContainer.classList.remove('hidden');
+        // Clean up old listener safely by cloning or rewriting onclick
+        btnLoadMore.onclick = () => {
+            if (typeof loadMoreCallback === 'function') {
+                loadMoreCallback();
+            }
+        };
+    } else if (loadMoreContainer) {
+        loadMoreContainer.classList.add('hidden');
+    }
 }
 
 export function toggleMediaSelection(id, cardElement, event) {

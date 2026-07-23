@@ -53,90 +53,93 @@ export async function parseTikTokUrl(urlInput) {
     return mediaItems;
 }
 
-export async function parseTikTokAccount(accountInput) {
+export async function parseTikTokAccount(accountInput, cursor = 0) {
     let mediaItems = [];
+    let nextCursor = 0;
+    let hasMore = false;
     
-    // 1. Tab Scraper (강력한 Lazy Loading 우회기)
-    if (extBridgeReady) {
-        logToTerminal('틱톡 탭 스크래퍼 엔진 가동 중 (무한 스크롤 자동화)...', 'info', 'account');
-        try {
-            const response = await new Promise((resolve, reject) => {
-                const reqId = Date.now().toString();
-                window.postMessage({ type: 'AMEVA_EXT_TIKTOK_SCRAPE', id: reqId, username: accountInput }, '*');
-                
-                const listener = (event) => {
-                    if (event.source !== window || !event.data || event.data.type !== 'AMEVA_EXT_TIKTOK_SCRAPE_RESULT') return;
-                    if (event.data.id === reqId) {
-                        window.removeEventListener('message', listener);
-                        resolve(event.data.response);
-                    }
-                };
-                window.addEventListener('message', listener);
-                
-                setTimeout(() => {
-                    window.removeEventListener('message', listener);
-                    reject(new Error("틱톡 탭 스크래핑 시간 초과."));
-                }, 40000); // Wait up to 40s
-            });
+    // 1. TikWM API (가장 빠르고 정확함, cursor 지원)
+    logToTerminal(`TikWM API 파서로 계정 피드 조회 중... (Cursor: ${cursor})`, 'info', 'account');
+    try {
+        const fetchUrl = `https://www.tikwm.com/api/user/posts?unique_id=${encodeURIComponent(accountInput)}&count=33&cursor=${cursor}`;
+        let resText = '';
+        
+        if (extBridgeReady) {
+            logToTerminal('확장 프로그램 브릿지로 우회 접속 중...', 'info', 'account');
+            resText = await fetchViaExtensionBridge(fetchUrl);
+        } else {
+            const res = await fetch(fetchUrl);
+            resText = await res.text();
+        }
+        
+        const json = JSON.parse(resText);
+        if (json && json.data && json.data.videos) {
+            mediaItems = json.data.videos.map(v => ({
+                id: v.id,
+                type: 'video',
+                thumb: v.cover,
+                url: v.play,
+                title: v.title || `TikTok_${v.id}`
+            }));
+            nextCursor = json.data.cursor || 0;
+            hasMore = json.data.hasMore === 1 || json.data.hasMore === true;
+            logToTerminal(`API 호출 성공! ${mediaItems.length}개 렌더링 준비 완료.`, 'success', 'account');
+            return { items: mediaItems, cursor: nextCursor, hasMore: hasMore };
+        }
+    } catch(e) {
+        logToTerminal(`TikWM API 실패: ${e.message}`, 'warn', 'account');
+    }
 
-            if (response && response.success && response.items) {
-                logToTerminal(`탭 스크래핑 성공: ${response.items.length}개의 아이템 파싱됨.`, 'success', 'account');
-                
-                const videos = response.items;
-                mediaItems = videos.map(v => {
-                    const videoId = v.id || v.video?.id || v.itemStruct?.id;
-                    const videoObj = v.video || v.itemStruct?.video || {};
-                    return {
-                        id: videoId,
-                        type: 'video', // we can default to video, if slideshow it'll be mapped by downloader later or here
-                        thumb: videoObj.cover || videoObj.originCover || 'https://picsum.photos/300/450',
-                        url: videoObj.playAddr || videoObj.downloadAddr || `https://www.tiktok.com/@${accountInput}/video/${videoId}`,
-                        title: v.desc || v.itemStruct?.desc || `TikTok_${videoId}`
+    // API 실패 시에만 fallback으로 넘어가지만, fallback들은 pagination(Load More)을 완벽히 지원하기 어렵습니다.
+    // 일단 첫 페이지만이라도 보여주기 위해 유지합니다.
+    if (cursor === 0 && mediaItems.length === 0) {
+        // Tab Scraper
+        if (extBridgeReady) {
+            logToTerminal('API 실패, 틱톡 탭 스크래퍼 엔진 가동 중...', 'info', 'account');
+            try {
+                const response = await new Promise((resolve, reject) => {
+                    const reqId = Date.now().toString();
+                    window.postMessage({ type: 'AMEVA_EXT_TIKTOK_SCRAPE', id: reqId, username: accountInput }, '*');
+                    
+                    const listener = (event) => {
+                        if (event.source !== window || !event.data || event.data.type !== 'AMEVA_EXT_TIKTOK_SCRAPE_RESULT') return;
+                        if (event.data.id === reqId) {
+                            window.removeEventListener('message', listener);
+                            resolve(event.data.response);
+                        }
                     };
-                }).filter(item => item.id);
-            } else {
-                throw new Error(response?.error || "탭 스크래핑 데이터 없음.");
-            }
-        } catch (e) {
-            logToTerminal(`탭 스크래퍼 에러: ${e.message}`, 'error', 'account');
-        }
-    } else {
-        logToTerminal('확장 프로그램 없음: 탭 스크래퍼(스크롤 자동화)를 사용할 수 없습니다.', 'warn', 'account');
-    }
+                    window.addEventListener('message', listener);
+                    
+                    setTimeout(() => {
+                        window.removeEventListener('message', listener);
+                        reject(new Error("틱톡 탭 스크래핑 시간 초과."));
+                    }, 40000); 
+                });
 
-    // 2. TikWM API Fallback
-    if (mediaItems.length === 0) {
-        logToTerminal('TikWM API 파서로 우회 접속 중...', 'info', 'account');
-        try {
-            const fetchUrl = `https://www.tikwm.com/api/user/posts?unique_id=${encodeURIComponent(accountInput)}&count=33`;
-            let resText = '';
-            
-            if (extBridgeReady) {
-                resText = await fetchViaExtensionBridge(fetchUrl);
-            } else {
-                const res = await fetch(fetchUrl);
-                resText = await res.text();
+                if (response && response.success && response.items) {
+                    const videos = response.items;
+                    mediaItems = videos.map(v => {
+                        const videoId = v.id || v.video?.id || v.itemStruct?.id;
+                        const videoObj = v.video || v.itemStruct?.video || {};
+                        return {
+                            id: videoId,
+                            type: 'video', 
+                            thumb: videoObj.cover || videoObj.originCover || 'https://picsum.photos/300/450',
+                            url: videoObj.playAddr || videoObj.downloadAddr || `https://www.tiktok.com/@${accountInput}/video/${videoId}`,
+                            title: v.desc || v.itemStruct?.desc || `TikTok_${videoId}`
+                        };
+                    }).filter(item => item.id);
+                    return { items: mediaItems, cursor: 0, hasMore: false };
+                }
+            } catch (e) {
+                logToTerminal(`탭 스크래퍼 에러: ${e.message}`, 'error', 'account');
             }
-            
-            const json = JSON.parse(resText);
-            if (json && json.data && json.data.videos) {
-                mediaItems = json.data.videos.map(v => ({
-                    id: v.id,
-                    type: 'video',
-                    thumb: v.cover,
-                    url: v.play,
-                    title: v.title || `TikTok_${v.id}`
-                }));
-            }
-        } catch(e) {
-            logToTerminal(`TikWM API 실패: ${e.message}`, 'warn', 'account');
         }
-    }
 
-    // 3. Pyodide yt-dlp Fallback
-    if (mediaItems.length === 0 && pyodideReady) {
-        logToTerminal('WASM(Pyodide) yt-dlp 엔진으로 계정 전체 스캔 중 (시간이 오래 걸릴 수 있습니다)...', 'warn', 'account');
-        const pyCode = `
+        // Pyodide yt-dlp Fallback
+        if (mediaItems.length === 0 && pyodideReady) {
+            logToTerminal('WASM yt-dlp 엔진으로 계정 전체 스캔 중 (최대 30개)...', 'warn', 'account');
+            const pyCode = `
 import json
 def fetch_tiktok_profile(target_username):
     try:
@@ -161,67 +164,16 @@ def fetch_tiktok_profile(target_username):
 
 fetch_tiktok_profile("${accountInput}")
 `;
-        try {
-            const pyResStr = await pyodideInstance.runPythonAsync(pyCode);
-            const pyRes = JSON.parse(pyResStr);
-            
-            if (pyRes.success && pyRes.data) {
-                mediaItems = pyRes.data;
-            } else {
-                throw new Error(pyRes.message);
-            }
-        } catch (err) {
-            logToTerminal(`Pyodide 엔진 오류: ${err.message}`, 'error', 'account');
-        }
-    }
-
-    // 4. Urlebird Fallback
-    if (mediaItems.length === 0) {
-        logToTerminal('모든 방식 차단됨. 퍼블릭 아카이브(UrleBird) 최후 우회 탐색 시작...', 'info', 'account');
-        try {
-            const urlebirdUrl = `https://urlebird.com/user/${encodeURIComponent(accountInput)}/`;
-            let ubHtml = '';
-            if (extBridgeReady) {
-                ubHtml = await fetchViaExtensionBridge(urlebirdUrl);
-            } else {
-                const ubRes = await fetch(urlebirdUrl);
-                if (ubRes.ok) ubHtml = await ubRes.text();
-            }
-            
-            if (ubHtml) {
-                const jsonRegex = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/g;
-                let match;
-                while ((match = jsonRegex.exec(ubHtml)) !== null) {
-                    try {
-                        const data = JSON.parse(match[1]);
-                        if (data['@type'] === 'ItemList' && Array.isArray(data.itemListElement)) {
-                            const itemsMap = new Map();
-                            for (const item of data.itemListElement) {
-                                if (!item.url) continue;
-                                const idMatch = item.url.match(/(\d+)\/?$/);
-                                if (idMatch && item.thumbnailUrl && item.thumbnailUrl.length > 0) {
-                                    itemsMap.set(idMatch[1], item.thumbnailUrl[0]);
-                                }
-                            }
-                            
-                            if (itemsMap.size > 0) {
-                                mediaItems = Array.from(itemsMap.entries()).map(([id, thumb]) => ({
-                                    id: id,
-                                    type: 'video',
-                                    thumb: thumb,
-                                    url: `https://www.tiktok.com/@${accountInput}/video/${id}`,
-                                    title: `TikTok_${id}`
-                                }));
-                                break; 
-                            }
-                        }
-                    } catch (e) {}
+            try {
+                const pyResStr = await pyodideInstance.runPythonAsync(pyCode);
+                const pyRes = JSON.parse(pyResStr);
+                
+                if (pyRes.success && pyRes.data) {
+                    return { items: pyRes.data, cursor: 0, hasMore: false };
                 }
-            }
-        } catch (ubErr) {
-            logToTerminal(`UrleBird 우회 탐색 실패: ${ubErr.message}`, 'error', 'account');
+            } catch (err) {}
         }
     }
     
-    return mediaItems;
+    return { items: mediaItems, cursor: 0, hasMore: false };
 }

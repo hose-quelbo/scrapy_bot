@@ -115,7 +115,11 @@ res
     }
 }
 
-async function startAccountSearch() {
+let currentAccountCursor = 0;
+let currentAccountInput = '';
+let currentAccountPlatform = '';
+
+async function startAccountSearch(isLoadMore = false) {
     const platform = document.getElementById('platform-select')?.value;
     const accountInput = document.getElementById('account-input')?.value.replace('@', '').trim();
     
@@ -124,36 +128,69 @@ async function startAccountSearch() {
         return;
     }
 
-    logToTerminal(`@${accountInput} 계정의 ${platform} 미디어 스캔 중...`, 'info', 'account');
+    if (!isLoadMore) {
+        currentAccountCursor = 0;
+        currentAccountInput = accountInput;
+        currentAccountPlatform = platform;
+    }
+
+    const btnText = isLoadMore ? '더보기 로딩 중...' : '스캔 중...';
+    logToTerminal(`@${currentAccountInput} 계정의 ${currentAccountPlatform} 미디어 스캔 중... (Cursor: ${currentAccountCursor})`, 'info', 'account');
+    
     const btnSearchAccount = document.getElementById('btn-search-account');
-    if(btnSearchAccount) {
+    if (btnSearchAccount && !isLoadMore) {
         btnSearchAccount.disabled = true;
-        btnSearchAccount.innerHTML = '<span class="animate-pulse">스캔 중...</span>';
+        btnSearchAccount.innerHTML = `<span class="animate-pulse">${btnText}</span>`;
+    }
+
+    const loadMoreBtn = document.getElementById('btn-load-more');
+    if (loadMoreBtn && isLoadMore) {
+        loadMoreBtn.disabled = true;
+        loadMoreBtn.innerHTML = `<span class="animate-pulse">${btnText}</span>`;
     }
 
     try {
-        let mediaItems = [];
-        if (platform === 'tiktok') {
-            mediaItems = await parseTikTokAccount(accountInput);
-        } else if (platform === 'instagram') {
-            mediaItems = await parseInstagramAccount(accountInput);
+        let result = { items: [], cursor: 0, hasMore: false };
+        if (currentAccountPlatform === 'tiktok') {
+            result = await parseTikTokAccount(currentAccountInput, currentAccountCursor);
+        } else if (currentAccountPlatform === 'instagram') {
+            // Instagram currently returns just an array, we can wrap it
+            const igItems = await parseInstagramAccount(currentAccountInput);
+            result = { items: igItems, cursor: 0, hasMore: false };
         }
 
-        if (mediaItems.length === 0) {
-            throw new Error('모든 폴백 엔진(API -> 크롤러 -> WASM Pyodide)이 실패했습니다. 계정이 비공개이거나 차단되었습니다.');
+        if (!result || !result.items || result.items.length === 0) {
+            if (!isLoadMore) {
+                throw new Error('모든 폴백 엔진(API -> 크롤러 -> WASM Pyodide)이 실패했습니다. 계정이 비공개이거나 차단되었습니다.');
+            } else {
+                logToTerminal('더 이상 불러올 데이터가 없습니다.', 'warn', 'account');
+                return;
+            }
         }
 
-        logToTerminal(`스캔 성공! 총 ${mediaItems.length}개의 미디어를 불러왔습니다.`, 'success', 'account');
-        renderRealGallery(mediaItems);
+        currentAccountCursor = result.cursor;
+        
+        logToTerminal(`스캔 성공! ${result.items.length}개의 미디어를 불러왔습니다.`, 'success', 'account');
+        
+        // Pass result and isLoadMore to downloader
+        renderRealGallery(result.items, isLoadMore, result.hasMore, loadMoreAccountMedia);
 
     } catch (error) {
         logToTerminal(`스캔 실패: ${error.message}`, 'error', 'account');
     } finally {
-        if (btnSearchAccount) {
+        if (btnSearchAccount && !isLoadMore) {
             btnSearchAccount.disabled = false;
             btnSearchAccount.innerHTML = '계정 전체 미디어 스캔';
         }
+        if (loadMoreBtn && isLoadMore) {
+            loadMoreBtn.disabled = false;
+            loadMoreBtn.innerHTML = '더보기 (Load More)';
+        }
     }
+}
+
+export function loadMoreAccountMedia() {
+    startAccountSearch(true);
 }
 
 function bindEvents() {
