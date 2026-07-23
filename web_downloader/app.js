@@ -746,27 +746,7 @@ fetch_instagram_profile("${accountInput}")
         }
 
         if (mediaItems.length === 0) {
-            logToTerminal('최종 수단: 로컬 스크래피 봇(Scrapy Bot)으로 연동을 시도합니다...', 'warn', 'account');
-            try {
-                const localRes = await fetch(`http://localhost:8000/api/scrape_instagram?username=${encodeURIComponent(accountInput)}`);
-                if (localRes.ok) {
-                    const localJson = await localRes.json();
-                    if (localJson.success && localJson.data) {
-                        mediaItems = localJson.data;
-                        logToTerminal(`[Local Scrapy Bot] 엔진으로 ${mediaItems.length}개의 미디어를 찾았습니다!`, 'success', 'account');
-                    } else {
-                        logToTerminal(`로컬 봇 응답 오류: ${localJson.message || '데이터 없음'}`, 'error', 'account');
-                    }
-                } else {
-                    logToTerminal(`로컬 스크래피 봇 서버(http://localhost:8000)가 응답하지 않습니다.`, 'error', 'account');
-                }
-            } catch (err) {
-                logToTerminal(`로컬 봇 연동 실패: 서버가 꺼져있거나 연결할 수 없습니다.`, 'error', 'account');
-            }
-        }
-
-        if (mediaItems.length === 0) {
-            throw new Error('모든 폴백 엔진(API -> 크롤러 -> yt-dlp -> 로컬 봇)이 실패했습니다. 계정이 비공개이거나 차단되었습니다.');
+            throw new Error('모든 폴백 엔진(API -> 크롤러 -> WASM Pyodide)이 실패했습니다. 계정이 비공개이거나 차단되었습니다.');
         }
 
         logToTerminal(`스캔 성공! 총 ${mediaItems.length}개의 미디어를 불러왔습니다.`, 'success', 'account');
