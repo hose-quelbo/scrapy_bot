@@ -1,0 +1,17 @@
+<!-- Gallery View -->
+<div id="gallery-container" class="mt-6 hidden border-t border-white/10 pt-6">
+    <div class="flex justify-between items-center mb-4">
+        <h3 class="text-sm font-semibold text-emerald-100">미디어 선택 목록</h3>
+        <div class="flex gap-2">
+            <button id="btn-select-all" class="glass-button px-3.5 py-1.5 rounded-lg text-xs font-semibold">
+                전체 선택
+            </button>
+            <button id="btn-download-selected" class="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 rounded-lg text-xs font-bold shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all opacity-50 cursor-not-allowed">
+                선택 다운로드 (0)
+            </button>
+        </div>
+    </div>
+    <div id="media-grid" class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <!-- Media items injected via JS -->
+    </div>
+</div>

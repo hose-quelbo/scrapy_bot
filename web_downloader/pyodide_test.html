@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Pyodide Network Test</title>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
+</head>
+<body>
+  <h1>Pyodide Network Test 2</h1>
+  <pre id="output"></pre>
+  <script>
+    function log(msg) {
+      document.getElementById('output').textContent += msg + '\n';
+      console.log(msg);
+    }
+    
+    async function main() {
+      try {
+        log("Loading Pyodide...");
+        let pyodide = await loadPyodide();
+        log("Pyodide loaded. Loading packages...");
+        
+        // lzma 패키지 로드 (instaloader 의존성 에러 해결용)
+        await pyodide.loadPackage("lzma");
+        await pyodide.loadPackage("micropip");
+        const micropip = pyodide.pyimport("micropip");
+        
+        log("Installing instaloader...");
+        await micropip.install("instaloader");
+        log("Instaloader installed successfully!");
+        
+        log("Testing Instaloader network request...");
+        try {
+          await pyodide.runPythonAsync(`
+import instaloader
+import traceback
+
+print("Initializing Instaloader...")
+L = instaloader.Instaloader()
+try:
+    print("Fetching profile leomessi...")
+    profile = instaloader.Profile.from_username(L.context, "leomessi")
+    print("Success! Profile:", profile.username, profile.full_name)
+except Exception as e:
+    print("Exception occurred:")
+    print(traceback.format_exc())
+          `);
+        } catch (py_err) {
+            log("Python Error: " + py_err);
+        }
+        log("Test finished.");
+      } catch (err) {
+        log("JS Error: " + err.message);
+      }
+    }
+    main();
+  </script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+<!-- View 1: URL Download -->
+<div id="view-url" class="space-y-4 block">
+    <div>
+        <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">동영상 / 사진 URL</label>
+        <input type="text" id="url-input" placeholder="https://www.tiktok.com/... 또는 https://www.youtube.com/..." 
+            class="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-slate-600 transition-colors">
+    </div>
+    <button id="btn-download-url" disabled class="w-full py-3 rounded-xl font-semibold text-sm bg-slate-100 text-slate-950 hover:bg-white transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+        추출 및 다운로드
+    </button>
+
+    <!-- URL Tab Dedicated Console -->
+    <div class="pt-2">
+        <div class="flex justify-between items-center mb-1.5">
+            <span class="text-[11px] font-mono text-slate-400 uppercase tracking-wider">URL 추출 콘솔 로그</span>
+            <button id="btn-clear-log-url" class="text-[11px] text-slate-500 hover:text-slate-300 transition-colors">Clear</button>
+        </div>
+        <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-3.5 font-mono text-xs h-36 overflow-y-auto custom-scrollbar" id="log-container-url">
+            <ul id="log-output-url" class="space-y-1">
+                <li class="text-slate-500">[URL Mode] 준비 완료</li>
+            </ul>
+        </div>
+    </div>
+</div>
