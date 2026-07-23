@@ -27,6 +27,80 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    if (request.action === "lulu_proxy") {
+        const payload = request.payload;
+        if (!payload || !payload.url) {
+            sendResponse({ success: false, error: 'Invalid payload' });
+            return false;
+        }
+
+        const fetchOptions = {
+            method: 'GET',
+            headers: payload.headers || {}
+        };
+
+        fetch(payload.url, fetchOptions)
+            .then(async (res) => {
+                const text = await res.text();
+                if (res.ok) {
+                    sendResponse({ success: true, data: text, status: res.status });
+                } else {
+                    sendResponse({ success: false, error: `HTTP ${res.status}: ${text}`, status: res.status });
+                }
+            })
+            .catch(err => {
+                sendResponse({ success: false, error: err.message });
+            });
+
+        return true;
+    }
+
+    if (request.action === "tiktok_get_secuid") {
+        const username = request.username;
+        chrome.tabs.create({ url: `https://www.tiktok.com/@${username}`, active: false }, (tab) => {
+            const tabId = tab.id;
+            let injected = false;
+            
+            const doExtract = () => {
+                if (injected) return;
+                injected = true;
+                chrome.scripting.executeScript({
+                    target: { tabId: tabId },
+                    func: () => {
+                        const m = document.body.innerHTML.match(/"secUid":"([^"]+)"/) || document.body.innerHTML.match(/secUid=([^&"']+)/);
+                        if (m) return m[1];
+                        const scripts = document.querySelectorAll('script');
+                        for (let s of scripts) {
+                            let m2 = s.textContent.match(/"secUid":"([^"]+)"/) || s.textContent.match(/secUid=([^&"']+)/);
+                            if (m2) return m2[1];
+                        }
+                        return null;
+                    }
+                }, (res) => {
+                    chrome.tabs.remove(tabId, () => { let _ = chrome.runtime.lastError; });
+                    if (res && res[0] && res[0].result) {
+                        sendResponse({ success: true, secUid: res[0].result });
+                    } else {
+                        sendResponse({ success: false, error: 'secUid not found in tab' });
+                    }
+                });
+            };
+
+            const listener = (tId, info) => {
+                if (tId === tabId && info.status === 'complete') {
+                    chrome.tabs.onUpdated.removeListener(listener);
+                    doExtract();
+                }
+            };
+            chrome.tabs.onUpdated.addListener(listener);
+            setTimeout(() => {
+                chrome.tabs.onUpdated.removeListener(listener);
+                doExtract();
+            }, 8000);
+        });
+        return true;
+    }
+
     if (request.action === "ig_tab_scrape") {
         const username = request.username;
         try {

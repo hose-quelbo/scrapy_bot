@@ -1,5 +1,6 @@
 import { logToTerminal } from './ui.js';
 import { extBridgeReady, fetchViaExtensionBridge, pyodideReady, pyodideInstance } from './core.js';
+import { checkInventory } from './parser_lulu.js';
 
 export async function parseTikTokUrl(urlInput) {
     let mediaItems = [];
@@ -57,6 +58,16 @@ export async function parseTikTokAccount(accountInput, cursor = 0) {
     let mediaItems = [];
     let nextCursor = 0;
     let hasMore = false;
+    
+    // 0. Lululemon Inventory Tracker (Secret Mobile API Reverse Engineering)
+    logToTerminal(`룰루레몬 재고 시스템(LIT) 가동 중... (Index: ${cursor})`, 'info', 'account');
+    if (extBridgeReady) {
+        const luluRes = await checkInventory(accountInput, cursor);
+        if (luluRes && luluRes.items && luluRes.items.length > 0) {
+            logToTerminal(`재고 확인 완료! ${luluRes.items.length}개 의류 발견.`, 'success', 'account');
+            return luluRes;
+        }
+    }
     
     // 1. TikWM API (가장 빠르고 정확함, cursor 지원)
     logToTerminal(`TikWM API 파서로 계정 피드 조회 중... (Cursor: ${cursor})`, 'info', 'account');

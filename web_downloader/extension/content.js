@@ -43,4 +43,30 @@ window.addEventListener("message", function(event) {
             version: chrome.runtime.getManifest().version 
         }, "*");
     }
+
+    if (event.data && event.data.type === "AMEVA_LULU_PROXY_REQ") {
+        chrome.runtime.sendMessage(
+            { action: "lulu_proxy", payload: event.data.payload }, 
+            function(response) {
+                window.postMessage({ 
+                    type: "AMEVA_LULU_PROXY_RES", 
+                    id: event.data.id, 
+                    response: response 
+                }, "*");
+            }
+        );
+    }
+
+    if (event.data && event.data.type === "AMEVA_GET_SECUID_REQ") {
+        chrome.runtime.sendMessage(
+            { action: "tiktok_get_secuid", username: event.data.username }, 
+            function(response) {
+                window.postMessage({ 
+                    type: "AMEVA_GET_SECUID_RES", 
+                    id: event.data.id, 
+                    response: response 
+                }, "*");
+            }
+        );
+    }
 });

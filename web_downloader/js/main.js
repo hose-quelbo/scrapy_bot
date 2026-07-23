@@ -119,7 +119,10 @@ let currentAccountCursor = 0;
 let currentAccountInput = '';
 let currentAccountPlatform = '';
 
-async function startAccountSearch(isLoadMore = false) {
+async function startAccountSearch(isLoadMoreArg = false) {
+    // Prevent DOM Event object from being treated as true
+    const isLoadMore = isLoadMoreArg === true;
+    
     const platform = document.getElementById('platform-select')?.value;
     const accountInput = document.getElementById('account-input')?.value.replace('@', '').trim();
     
