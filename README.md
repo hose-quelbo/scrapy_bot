@@ -1,0 +1,54 @@
+# Scrapy Bot Installation Guide
+
+## 1. Prerequisites
+- Python 3.10 or higher
+- FFmpeg (Required for video processing by yt-dlp)
+
+## 2. Installation (Standard Environment)
+
+### Install required Python libraries
+```bash
+pip install yt-dlp python-telegram-bot
+```
+
+### Setup Configuration
+1. Copy `config.json.example` to `config.json`.
+2. Fill in your `BOT_TOKEN`, `ALLOWED_USER_IDS`, and email settings in `config.json`.
+
+## 3. Termux Installation (Android)
+
+### Basic Package Setup
+```bash
+pkg update && pkg upgrade
+pkg install python ffmpeg
+```
+
+### Install Libraries in Termux
+```bash
+pip install yt-dlp python-telegram-bot
+```
+
+## 4. How to Run
+
+### Main Script (Bot Only)
+```bash
+python scrapy_bot.py
+```
+
+### Manager Script (Auto-restart & Maintenance)
+```bash
+python manager.py
+```
+
+## 5. Version Checks
+Perform the following commands to ensure everything is up to date:
+- Python: `python --version`
+- yt-dlp: `yt-dlp --version`
+- pip: `pip --version`
+
+## 6. Precautions (Notes)
+- **Configuration**: The bot will not start if `config.json` is missing or if the `BOT_TOKEN` is set to the default value.
+- **Whitelist**: Only User IDs listed in `ALLOWED_USER_IDS` can interact with the bot.
+- **Permissions**: Ensure the script has write permissions in the directory for logging and downloads.
+- **Termux Battery**: On Android, disable battery optimization for Termux to prevent the bot from being killed in the background.
+- **yt-dlp Update**: The `manager.py` script automatically attempts to update `yt-dlp` on startup and during maintenance.
