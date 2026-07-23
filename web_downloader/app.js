@@ -177,9 +177,13 @@ async function initWASM() {
         pyodideInstance = await loadPyodide();
         await pyodideInstance.loadPackage("micropip");
         await pyodideInstance.loadPackage("ssl");
+        
+        // instaloader의 의존성인 lzma 미리 로드
+        await pyodideInstance.loadPackage("lzma");
         const micropip = pyodideInstance.pyimport("micropip");
         
-        logToTerminal('WASM 내부 yt-dlp 설치 중...', 'warn', 'url');
+        logToTerminal('WASM 내부 패키지(instaloader, yt-dlp 등) 설치 중...', 'warn', 'url');
+        await micropip.install('instaloader');
         await micropip.install('yt-dlp');
         pyodideReady = true;
         
@@ -540,17 +544,7 @@ async function startAccountSearch() {
         } else if (platform === 'instagram') {
             logToTerminal('인스타그램 계정 프로필 조회 중...', 'info', 'account');
             
-            // If running on localhost and target is a test profile, mock it to allow offline test verification
-            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            if (isLocal && (accountInput.toLowerCase() === 'leomessi' || accountInput.toLowerCase() === 'cristiano' || accountInput.toLowerCase() === 'test')) {
-                logToTerminal(`로컬 테스트 환경 감지: @${accountInput}에 대한 모의(Mock) 프로필 데이터를 로드합니다.`, 'success', 'account');
-                mediaItems = [
-                    { id: 'mock_1', type: 'photo', thumb: 'https://picsum.photos/400/600?random=1', url: 'https://picsum.photos/800/1200?random=1', title: 'Mock Post 1 - Photo' },
-                    { id: 'mock_2', type: 'video', thumb: 'https://picsum.photos/400/600?random=2', url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4', title: 'Mock Post 2 - Video' },
-                    { id: 'mock_3', type: 'photo', thumb: 'https://picsum.photos/400/600?random=3', url: 'https://picsum.photos/800/1200?random=3', title: 'Mock Post 3 - Photo' },
-                    { id: 'mock_4', type: 'video', thumb: 'https://picsum.photos/400/600?random=4', url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4', title: 'Mock Post 4 - Video' }
-                ];
-            } else if (extBridgeReady) {
+            if (extBridgeReady) {
                 logToTerminal('인스타그램 쿠키 인증 브릿지 활성화됨.', 'info', 'account');
                 try {
                     let profileJsonText = '';
@@ -609,7 +603,7 @@ async function startAccountSearch() {
                             setTimeout(() => {
                                 window.removeEventListener('message', listener);
                                 reject(new Error("탭 스크래핑 시간 초과 (인스타그램 로그인이 필요할 수 있습니다)."));
-                            }, 20000);
+                            }, 45000);
                         });
 
                         if (response && response.success && response.edges) {
@@ -676,8 +670,103 @@ async function startAccountSearch() {
             }
         }
 
+        if (mediaItems.length === 0 && pyodideReady && platform === 'instagram') {
+            logToTerminal('기존 방식 실패. WASM(Pyodide) 인스타그램 다중 폴백 엔진 가동 중...', 'warn', 'account');
+            const pyCode = `
+import json
+import traceback
+
+def fetch_instagram_profile(target_username):
+    # 1단계: instaloader
+    try:
+        import instaloader
+        L = instaloader.Instaloader()
+        # 익스텐션 프록시가 쿠키를 주입하므로 로그인(L.login) 없이도 인증된 것처럼 작동합니다.
+        profile = instaloader.Profile.from_username(L.context, target_username)
+        
+        items = []
+        count = 0
+        for post in profile.get_posts():
+            if count >= 12: break
+            items.append({
+                "id": post.shortcode,
+                "type": "video" if post.is_video else "photo",
+                "thumb": post.url,
+                "url": post.video_url if post.is_video else post.url,
+                "title": f"IG_{post.shortcode}"
+            })
+            count += 1
+            
+        if items:
+            return json.dumps({"success": True, "engine": "Instaloader", "data": items})
+    except Exception as e:
+        pass
+        
+    # 2단계: instagrapi (Pyodide 의존성 문제로 일단 생략, 바로 yt-dlp로 넘어감)
+    
+    # 3단계: yt-dlp (틱톡/범용 영상 다운로더)
+    try:
+        import yt_dlp
+        ydl_opts = {'quiet': True, 'extract_flat': True}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            res = ydl.extract_info(f"https://www.instagram.com/{target_username}/", download=False)
+            items = []
+            for entry in res.get('entries', [])[:12]:
+                items.append({
+                    "id": entry.get('id', ''),
+                    "type": "video",
+                    "thumb": entry.get('thumbnails', [{}])[0].get('url', '') if entry.get('thumbnails') else '',
+                    "url": entry.get('url', ''),
+                    "title": entry.get('title', f"IG_{entry.get('id', '')}")
+                })
+            if items:
+                return json.dumps({"success": True, "engine": "yt-dlp", "data": items})
+    except Exception as e:
+        pass
+        
+    # 모든 폴백 실패
+    return json.dumps({"success": False, "message": "안됩니다 ㅠ"})
+
+fetch_instagram_profile("${accountInput}")
+`;
+            try {
+                const pyResStr = await pyodideInstance.runPythonAsync(pyCode);
+                const pyRes = JSON.parse(pyResStr);
+                
+                if (pyRes.success && pyRes.data) {
+                    logToTerminal(`[Pyodide - ${pyRes.engine}] 엔진으로 ${pyRes.data.length}개의 미디어를 찾았습니다!`, 'success', 'account');
+                    mediaItems = pyRes.data;
+                } else {
+                    logToTerminal(pyRes.message, 'error', 'account');
+                    alert(pyRes.message);
+                }
+            } catch (err) {
+                logToTerminal(`Pyodide 엔진 오류: ${err.message}`, 'error', 'account');
+            }
+        }
+
         if (mediaItems.length === 0) {
-            throw new Error('해당 계정에서 공개 미디어를 찾지 못했습니다.');
+            logToTerminal('최종 수단: 로컬 스크래피 봇(Scrapy Bot)으로 연동을 시도합니다...', 'warn', 'account');
+            try {
+                const localRes = await fetch(`http://localhost:8000/api/scrape_instagram?username=${encodeURIComponent(accountInput)}`);
+                if (localRes.ok) {
+                    const localJson = await localRes.json();
+                    if (localJson.success && localJson.data) {
+                        mediaItems = localJson.data;
+                        logToTerminal(`[Local Scrapy Bot] 엔진으로 ${mediaItems.length}개의 미디어를 찾았습니다!`, 'success', 'account');
+                    } else {
+                        logToTerminal(`로컬 봇 응답 오류: ${localJson.message || '데이터 없음'}`, 'error', 'account');
+                    }
+                } else {
+                    logToTerminal(`로컬 스크래피 봇 서버(http://localhost:8000)가 응답하지 않습니다.`, 'error', 'account');
+                }
+            } catch (err) {
+                logToTerminal(`로컬 봇 연동 실패: 서버가 꺼져있거나 연결할 수 없습니다.`, 'error', 'account');
+            }
+        }
+
+        if (mediaItems.length === 0) {
+            throw new Error('모든 폴백 엔진(API -> 크롤러 -> yt-dlp -> 로컬 봇)이 실패했습니다. 계정이 비공개이거나 차단되었습니다.');
         }
 
         logToTerminal(`스캔 성공! 총 ${mediaItems.length}개의 미디어를 불러왔습니다.`, 'success', 'account');
